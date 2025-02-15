@@ -1,4 +1,8 @@
-# SnapKeeper - Intelligent Image Organizer
+# SnapSweaper
+## 功能特性
+- 智能截图整理
+- 多语言AI描述
+- 跨平台支持
 
 ## Features
 - Auto-rename screenshots with date and AI-generated descriptions
