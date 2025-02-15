@@ -4,29 +4,10 @@ import argparse
 import base64
 import requests
 from datetime import datetime
+import json  # 用于格式化JSON输出
 
 # API Configuration
 API_CONFIGS = {
-    'dashscope': {  # Aliyun DashScope
-        'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1",
-        'model': "qwen-vl-max",
-        'key_env': "DASHSCOPE_API_KEY",
-        'headers': lambda key: {
-            "Authorization": f"Bearer {key}",
-            "Content-Type": "application/json"
-        },
-        'payload_format': lambda prompt, image_data: {
-            "model": "qwen-vl-max",
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompt},
-                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
-                ]
-            }]
-        },
-        'response_parser': lambda r: r['choices'][0]['message']['content']
-    },
     'openai': {  # OpenAI GPT-4 Vision
         'base_url': "https://api.openai.com/v1/chat/completions",
         'model': "gpt-4-vision-preview",
@@ -47,14 +28,37 @@ API_CONFIGS = {
             "max_tokens": 100
         },
         'response_parser': lambda r: r['choices'][0]['message']['content']
+    },
+    'dashscope': {  # Aliyun DashScope
+        'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1/chat/completions",
+        'model': "qwen-vl-max",
+        'key_env': "DASHSCOPE_API_KEY",
+        'headers': lambda key: {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        'payload_format': lambda prompt, image_data: {
+            "model": "qwen-vl-max",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {
+                        "url": f"data:image/png;base64,{image_data}"
+                    }}
+                ]
+            }]
+        },
+        'response_parser': lambda r: r['choices'][0]['message']['content']
     }
 }
 
 # Configuration
-API_PROVIDER = os.getenv('API_PROVIDER', 'dashscope')  # Default to DashScope
 LANGUAGE = os.getenv('RENAME_LANG', 'zh-tw')  # Default to Traditional Chinese
-API_CONFIG = API_CONFIGS[API_PROVIDER]
-API_KEY = os.getenv(API_CONFIG['key_env'])
+API_PROVIDER = os.getenv('API_PROVIDER', 'openai')  # Default to OpenAI
+API_CONFIG = None
+API_KEY = None
+DEBUG_MODE = False
 
 def get_image_description(image_path):
     """Get image description (multi-language support)"""
@@ -75,20 +79,42 @@ def get_image_description(image_path):
         headers = API_CONFIG['headers'](API_KEY)
         payload = API_CONFIG['payload_format'](prompts[LANGUAGE], base64_data)
         
+        if DEBUG_MODE:
+            print("\n🔍 Debug Information:")
+            print(f"API URL: {API_CONFIG['base_url']}")
+            print(f"Headers: {json.dumps(headers, indent=2)}")
+            print(f"Payload: {json.dumps(payload, indent=2)}")
+        
         response = requests.post(
             API_CONFIG['base_url'],
             json=payload,
             headers=headers,
             timeout=20
         )
-        result = response.json()
+        
+        if DEBUG_MODE:
+            print(f"\nResponse status: {response.status_code}")
+            print(f"Response headers: {json.dumps(dict(response.headers), indent=2)}")
         
         if response.status_code != 200:
-            raise Exception(f"API Error: {result.get('error', {}).get('message', 'Unknown error')}")
+            if DEBUG_MODE:
+                print(f"Error response body: {response.text}")
+            raise Exception(f"API Error: Status {response.status_code}")
+            
+        try:
+            result = response.json()
+            if DEBUG_MODE:
+                print(f"Response body: {json.dumps(result, indent=2)}")
+        except ValueError as e:
+            if DEBUG_MODE:
+                print(f"Invalid JSON response: {response.text}")
+            raise Exception(f"Invalid API response: {str(e)}")
             
         return API_CONFIG['response_parser'](result)
     except Exception as e:
         print(f"⚠️ Recognition failed: {str(e)}")
+        if isinstance(e, requests.exceptions.RequestException):
+            print(f"Request error details: {str(e)}")
         return None
 
 def process_filename(image_path):
@@ -152,7 +178,7 @@ def process_directory(target_dir):
 
 def main():
     """Main entry point"""
-    print(f"SnapSweaper v1.0 - Using {API_PROVIDER.upper()} API")
+    print(f"SnapSweaper v1.0")
     print("Created by Nick C.\n")
     
     parser = argparse.ArgumentParser(description="SnapSweaper Image Organizer")
@@ -160,25 +186,32 @@ def main():
     parser.add_argument('--lang', choices=['zh-cn', 'zh-tw', 'en', 'jp'], 
                        default='zh-tw', help="Output language")
     parser.add_argument('--api', choices=list(API_CONFIGS.keys()),
-                       default='dashscope', help="API provider")
+                       default='openai', help="API provider")
+    parser.add_argument('--debug', action='store_true',
+                       help="Enable debug mode for detailed API information")
     args = parser.parse_args()
     
-    global LANGUAGE, API_PROVIDER, API_CONFIG, API_KEY
+    global LANGUAGE, API_PROVIDER, API_CONFIG, API_KEY, DEBUG_MODE
     LANGUAGE = args.lang
-    if args.api != API_PROVIDER:
-        API_PROVIDER = args.api
-        API_CONFIG = API_CONFIGS[API_PROVIDER]
-        API_KEY = os.getenv(API_CONFIG['key_env'])
+    API_PROVIDER = args.api
+    API_CONFIG = API_CONFIGS[API_PROVIDER]
+    API_KEY = os.getenv(API_CONFIG['key_env'])
     
     if not API_KEY:
         print(f"Error: Missing {API_CONFIG['key_env']} environment variable")
         return
+    
+    print(f"Using {API_PROVIDER.upper()} API")
     
     if not os.path.isdir(args.path):
         print(f"Error: Invalid directory - {args.path}")
         return
     
     print(f"\n🛠️ Starting processing: {os.path.abspath(args.path)}")
+    
+    # 传递debug参数给get_image_description
+    DEBUG_MODE = args.debug
+    
     process_directory(args.path)
     print("\n✅ Processing completed!")
 
