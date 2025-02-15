@@ -5,53 +5,90 @@ import base64
 import requests
 from datetime import datetime
 
-# 配置参数
-BASE_URL = "https://dashscope.aliyuncs.com/compatible-mode/v1"
-LANGUAGE = os.getenv('RENAME_LANG', 'en')  # 默认英文
-API_KEY = os.getenv('DASHSCOPE_API_KEY')
-MODEL_NAME = "qwen-vl-max"
+# API Configuration
+API_CONFIGS = {
+    'dashscope': {  # Aliyun DashScope
+        'base_url': "https://dashscope.aliyuncs.com/compatible-mode/v1",
+        'model': "qwen-vl-max",
+        'key_env': "DASHSCOPE_API_KEY",
+        'headers': lambda key: {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        'payload_format': lambda prompt, image_data: {
+            "model": "qwen-vl-max",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
+                ]
+            }]
+        },
+        'response_parser': lambda r: r['choices'][0]['message']['content']
+    },
+    'openai': {  # OpenAI GPT-4 Vision
+        'base_url': "https://api.openai.com/v1/chat/completions",
+        'model': "gpt-4-vision-preview",
+        'key_env': "OPENAI_API_KEY",
+        'headers': lambda key: {
+            "Authorization": f"Bearer {key}",
+            "Content-Type": "application/json"
+        },
+        'payload_format': lambda prompt, image_data: {
+            "model": "gpt-4-vision-preview",
+            "messages": [{
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": prompt},
+                    {"type": "image_url", "url": f"data:image/png;base64,{image_data}"}
+                ]
+            }],
+            "max_tokens": 100
+        },
+        'response_parser': lambda r: r['choices'][0]['message']['content']
+    }
+}
+
+# Configuration
+API_PROVIDER = os.getenv('API_PROVIDER', 'dashscope')  # Default to DashScope
+LANGUAGE = os.getenv('RENAME_LANG', 'zh-tw')  # Default to Traditional Chinese
+API_CONFIG = API_CONFIGS[API_PROVIDER]
+API_KEY = os.getenv(API_CONFIG['key_env'])
 
 def get_image_description(image_path):
-    """获取图片描述（多语言支持）"""
+    """Get image description (multi-language support)"""
     try:
-        headers = {
-            "Authorization": f"Bearer {API_KEY}",
-            "Content-Type": "application/json"
-        }
-        
+        if not API_KEY:
+            raise ValueError(f"Missing API key. Please set {API_CONFIG['key_env']}")
+
         with open(image_path, "rb") as f:
             base64_data = base64.b64encode(f.read()).decode("utf-8")
         
         prompts = {
-            'zh-hans': "请用简洁中文描述这张图片的主要内容，不要超过10个字",
-            'zh-hant': "請用簡潔繁體中文描述這張圖片的主要內容，不要超過10個字",
+            'zh-cn': "请用简洁中文描述这张图片的主要内容，不要超过10个字",
+            'zh-tw': "請用簡潔繁體中文描述這張圖片的主要內容，不要超過10個字",
             'en': "Describe the main content of this image in brief English within 10 words",
             'jp': "画像の主要内容を10字以内の簡潔な日本語で説明してください"
         }
         
-        payload = {
-            "model": MODEL_NAME,
-            "messages": [{
-                "role": "user",
-                "content": [
-                    {"type": "text", "text": prompts[LANGUAGE]},
-                    {"type": "image_url", "image_url": {
-                        "url": f"data:image/png;base64,{base64_data}"
-                    }}
-                ]
-            }]
-        }
+        headers = API_CONFIG['headers'](API_KEY)
+        payload = API_CONFIG['payload_format'](prompts[LANGUAGE], base64_data)
         
         response = requests.post(
-            f"{BASE_URL}/chat/completions",
+            API_CONFIG['base_url'],
             json=payload,
             headers=headers,
             timeout=20
         )
         result = response.json()
-        return result['choices'][0]['message']['content']
+        
+        if response.status_code != 200:
+            raise Exception(f"API Error: {result.get('error', {}).get('message', 'Unknown error')}")
+            
+        return API_CONFIG['response_parser'](result)
     except Exception as e:
-        print(f"⚠️ 识别失败: {str(e)}")
+        print(f"⚠️ Recognition failed: {str(e)}")
         return None
 
 def process_filename(image_path):
@@ -114,26 +151,36 @@ def process_directory(target_dir):
                 print(f"❗ 重命名失败: {str(e)}")
 
 def main():
-    """主入口"""
-    print("SnapSweaper v1.0 - 智能截图整理工具")
+    """Main entry point"""
+    print(f"SnapSweaper v1.0 - Using {API_PROVIDER.upper()} API")
     print("Created by Nick C.\n")
     
-    parser = argparse.ArgumentParser(description="SnapSweaper 图片管理工具")
-    parser.add_argument('path', nargs='?', default=os.getcwd(), help="目标目录")
-    parser.add_argument('--lang', choices=['zh-hans', 'zh-hant', 'en', 'jp'], 
-                       default='en', help="输出语言")
+    parser = argparse.ArgumentParser(description="SnapSweaper Image Organizer")
+    parser.add_argument('path', nargs='?', default=os.getcwd(), help="Target directory")
+    parser.add_argument('--lang', choices=['zh-cn', 'zh-tw', 'en', 'jp'], 
+                       default='zh-tw', help="Output language")
+    parser.add_argument('--api', choices=list(API_CONFIGS.keys()),
+                       default='dashscope', help="API provider")
     args = parser.parse_args()
     
-    global LANGUAGE
+    global LANGUAGE, API_PROVIDER, API_CONFIG, API_KEY
     LANGUAGE = args.lang
+    if args.api != API_PROVIDER:
+        API_PROVIDER = args.api
+        API_CONFIG = API_CONFIGS[API_PROVIDER]
+        API_KEY = os.getenv(API_CONFIG['key_env'])
     
-    if not os.path.isdir(args.path):
-        print(f"错误：无效目录 - {args.path}")
+    if not API_KEY:
+        print(f"Error: Missing {API_CONFIG['key_env']} environment variable")
         return
     
-    print(f"\n🛠️ 开始处理: {os.path.abspath(args.path)}")
+    if not os.path.isdir(args.path):
+        print(f"Error: Invalid directory - {args.path}")
+        return
+    
+    print(f"\n🛠️ Starting processing: {os.path.abspath(args.path)}")
     process_directory(args.path)
-    print("\n✅ 处理完成！")
+    print("\n✅ Processing completed!")
 
 if __name__ == "__main__":
     main() 
