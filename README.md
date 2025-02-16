@@ -84,6 +84,7 @@ python snapsweaper.py [目錄路徑] --lang [語言代碼]
 |----------------|---------------------|------------|--------------|
 | OpenAI | OPENAI_API_KEY | gpt-4-vision-preview | 準確度高、多語言支援佳 |
 | 通義千問 DashScope | DASHSCOPE_API_KEY | qwen-vl-max | 中文優化、響應快速 |
+| Ollama (本地) | 無需金鑰 No Key | llama3.2-vision + deepseek-r1:14b | 本地部署、隱私保護 |
 
 ### 命令列參數 | Command Arguments
 | 參數 Parameter | 說明 Description | 預設值 Default | 示例 Example |
@@ -100,18 +101,25 @@ python snapsweaper.py [目錄路徑] --lang [語言代碼]
 - 輸出格式 | Output: 
   - `YYYYMMDD-description[-n].png`
 
-<a id="常見問題--faq"></a>
-## 常見問題 | FAQ ❓
-
 ### 使用須知 | Usage Notes
 - 🖼️ 支援 PNG、JPG、JPEG 格式圖片
 - 📦 建議圖片大小不超過 10MB
 - 🔑 請確保 API 金鑰有效且有足夠額度
 - 🔄 首次使用建議先測試少量檔案
+- ⏱️ 使用本地模型（Ollama）時處理時間可能較長
+- 🖥️ 使用 Ollama 時需確保已安裝所需模型：
+  ```bash
+  ollama pull llama3.2-vision  # 圖片識別
+  ollama pull deepseek-r1:14b  # 文字處理
+  ```
+
+<a id="常見問題--faq"></a>
+## 常見問題 | FAQ ❓
 
 ### 故障排除 | Troubleshooting
 - API 金鑰無效：檢查環境變數設置
 - 檔案無法識別：確認檔案名稱格式
+- 處理超時：使用本地模型時可能需要較長時間
 - 處理失敗：檢查網絡連接和 API 額度
 
 ## 授權與貢獻 | License & Contributing 📜
