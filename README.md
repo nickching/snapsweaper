@@ -100,6 +100,18 @@ python snapsweaper.py [目錄路徑] --lang [語言代碼]
   - `SCR-YYYYMMDD...`
 - 輸出格式 | Output: 
   - `YYYYMMDD-description[-n].png`
+- 命名特點 | Naming Features:
+  - 🎯 優先識別圖片主題，而不是細節
+  - 💡 智能簡化命名，保留核心含義
+  - 📏 建議長度在10個字符以內
+  - 🔄 自動處理重複檔案
+
+### 命名示例 | Naming Examples
+| 圖片內容 Image Content | 輸出結果 Output |
+|----------------------|----------------|
+| 程式碼編輯器顯示 Python 語法高亮 | `編程器` |
+| 兩隊在綠茵場上進行足球比賽 | `足球賽` |
+| 自行車停放在建築物前方 | `單車位` |
 
 ### 使用須知 | Usage Notes
 - 🖼️ 支援 PNG、JPG、JPEG 格式圖片
@@ -107,10 +119,12 @@ python snapsweaper.py [目錄路徑] --lang [語言代碼]
 - 🔑 請確保 API 金鑰有效且有足夠額度
 - 🔄 首次使用建議先測試少量檔案
 - ⏱️ 使用本地模型（Ollama）時處理時間可能較長
+- 🎯 檔案命名優先考慮主題而非細節
+- 📏 建議檔名保持簡潔（10字符以內）
 - 🖥️ 使用 Ollama 時需確保已安裝所需模型：
   ```bash
   ollama pull llama3.2-vision  # 圖片識別
-  ollama pull deepseek-r1:14b  # 文字處理
+  ollama pull qwen2.5:32b      # 文字處理
   ```
 
 <a id="常見問題--faq"></a>
